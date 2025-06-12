@@ -54,7 +54,7 @@ function App() {
         formData.append('file', file);
 
         try {
-            const response = await axios.post('http://localhost:8000/upload', formData, {
+            const response = await axios.post('/upload', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -587,7 +587,7 @@ function App() {
         setReprocessing(true);
         setReprocessMsg('正在重新识别本页...');
         try {
-            const res = await axios.post('http://localhost:8000/reprocess', {
+            const res = await axios.post('/reprocess', {
                 fileName: currentTable.fileName,
                 pageIndex: currentTable.pageIndex
             });
