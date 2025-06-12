@@ -151,4 +151,10 @@ async def reprocess_page(data: dict = Body(...)):
         return results[0] if results else {}
     except Exception as e:
         logging.error(f"/reprocess处理异常: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logging.warning(f"[middleware] 收到请求: {request.method} {request.url.path}")
+    response = await call_next(request)
+    return response 
