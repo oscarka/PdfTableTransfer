@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
@@ -75,7 +75,8 @@ def process_pdf(pdf_path: str, file_name: str) -> List[dict]:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    logging.warning(f"/upload: 收到请求 method={request.method} headers={dict(request.headers)}")
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="只支持PDF文件")
     
