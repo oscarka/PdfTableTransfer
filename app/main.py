@@ -36,9 +36,9 @@ detector = TableDetector()
 config = TATRFormatConfig()
 formatter = TATRTableFormatter(config)
 
-# 静态文件托管（必须放最后，避免覆盖API路由）
+# 静态文件托管（/static，彻底分离API和前端资源）
 if os.path.exists('frontend/build'):
-    app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
+    app.mount("/static", StaticFiles(directory="frontend/build", html=True), name="static")
 
 @app.get("/")
 def read_index():
