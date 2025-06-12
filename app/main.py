@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import os
 import json
 from typing import List, Union, Tuple
@@ -38,7 +38,11 @@ formatter = TATRTableFormatter(config)
 
 # 静态文件托管（前端build产物）
 if os.path.exists('frontend/build'):
-    app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
+    app.mount("/static", StaticFiles(directory="frontend/build", html=True), name="static")
+
+@app.get("/")
+def read_index():
+    return FileResponse("frontend/build/index.html")
 
 def process_pdf(pdf_path: str, file_name: str) -> List[dict]:
     try:
