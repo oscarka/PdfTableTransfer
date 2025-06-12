@@ -142,12 +142,26 @@ async def reprocess_page(data: dict = Body(...)):
         for idx, table in enumerate(tables):
             ft = formatter.extract(table)
             df = ft.df()
-            # 兜底：如果所有列名都为空，则用首行内容作为表头
+            # 兜底1：如果所有列名都为空，则用首行内容作为表头
             if all(str(col).strip() == '' for col in df.columns):
                 logging.warning(f"/reprocess: columns全空，自动用首行内容作为表头")
                 if len(df) > 1:
                     df.columns = df.iloc[0].tolist()
                     df = df.iloc[1:].reset_index(drop=True)
+            # 兜底2：只要有空或重复列名，自动生成唯一列名
+            if len(set(df.columns)) < len(df.columns) or any(str(col).strip() == '' for col in df.columns):
+                logging.warning(f"/reprocess: 列名有空或重复，自动生成唯一列名")
+                df.columns = [col if str(col).strip() else f'列{i+1}' for i, col in enumerate(df.columns)]
+                seen = {}
+                new_cols = []
+                for col in df.columns:
+                    if col in seen:
+                        seen[col] += 1
+                        new_cols.append(f"{col}_{seen[col]}")
+                    else:
+                        seen[col] = 1
+                        new_cols.append(col)
+                df.columns = new_cols
             logging.warning(f"/reprocess: 表格{idx} shape={df.shape} columns={list(df.columns)} 前3行={df.head(3).to_dict(orient='records')}\n实际内容:\n{df.head(5)}")
             img = ft.image()
             img_buffer = io.BytesIO()
