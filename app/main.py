@@ -1,3 +1,19 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+import logging
+logging.basicConfig(level=logging.INFO, force=True)
+
+try:
+    import torch
+    torch.set_num_threads(1)
+except ImportError:
+    pass
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
