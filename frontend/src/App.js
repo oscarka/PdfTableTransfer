@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Layout, Upload, Button, Card, Spin, message, Table, List, Input, Space, Popconfirm, Modal, Tooltip, Radio, Switch, Checkbox } from 'antd';
-import { UploadOutlined, FileSearchOutlined, PlusOutlined, SaveOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons';
+import { UploadOutlined, FileSearchOutlined, PlusOutlined, SaveOutlined, CopyOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import './App.css';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
@@ -40,6 +40,9 @@ function App() {
     const [reprocessMsg, setReprocessMsg] = useState('');
     const [allSelected, setAllSelected] = useState(true);
     const [selectedTableIndexes, setSelectedTableIndexes] = useState([]);
+    const [showCopyHeaderModal, setShowCopyHeaderModal] = useState(false);
+    const [copyHeaderFromPage, setCopyHeaderFromPage] = useState(1);
+    const [copyHeaderLoading, setCopyHeaderLoading] = useState(false);
 
     const handleUpload = async (file) => {
         if (!file.name.endsWith('.pdf')) {
@@ -606,6 +609,55 @@ function App() {
         }
     };
 
+    // 检查当前表格表头是否异常（全空或与第一页不一致）
+    const isHeaderAbnormal = React.useMemo(() => {
+        console.log('【调试-前置】useMemo执行，currentTable:', currentTable, 'currentTable.data:', currentTable && currentTable.data, 'selectedIndex:', selectedIndex);
+        if (!currentTable || !currentTable.data || currentTable.data.length === 0) return false;
+        const cols = Object.keys(currentTable.data[0] || {});
+        const firstCols = tables.length > 0 && tables[0].data && tables[0].data.length > 0 ? Object.keys(tables[0].data[0]) : [];
+        console.log('【调试】当前表格序号:', selectedIndex + 1, '当前表头:', cols);
+        console.log('【调试】第一页表头:', firstCols);
+        if (cols.every(col => !col.trim())) {
+            console.log('【调试】表头全空，isHeaderAbnormal: true');
+            return true;
+        }
+        if (tables.length > 0 && tables[0].data && tables[0].data.length > 0) {
+            if (selectedIndex !== 0 && JSON.stringify(cols) !== JSON.stringify(firstCols)) {
+                console.log('【调试】表头与第一页不一致，isHeaderAbnormal: true');
+                return true;
+            }
+        }
+        console.log('【调试】isHeaderAbnormal: false');
+        return false;
+    }, [currentTable, tables, selectedIndex]);
+
+    // 复制表头操作
+    const handleCopyHeader = async () => {
+        if (!currentTable || !currentTable.fileName || !currentTable.pageIndex) return;
+        setCopyHeaderLoading(true);
+        try {
+            const res = await axios.post('/copy_header', {
+                fileName: currentTable.fileName,
+                fromPageIndex: copyHeaderFromPage,
+                toPageIndex: currentTable.pageIndex,
+                restoreFirstRow: true
+            });
+            // 用新数据刷新当前表格
+            setEditedTables(prev => ({
+                ...prev,
+                [selectedIndex]: { data: res.data.data, columns: res.data.columns }
+            }));
+            setEditData(res.data.data);
+            setEditColumns(res.data.columns);
+            message.success('表头复制成功！');
+            setShowCopyHeaderModal(false);
+        } catch (e) {
+            message.error('复制表头失败');
+        } finally {
+            setCopyHeaderLoading(false);
+        }
+    };
+
     return (
         <Layout className="layout" style={{ minHeight: '100vh' }}>
             <Header style={{ background: '#fff', padding: '0 20px' }}>
@@ -702,6 +754,36 @@ function App() {
                         <Content style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #f0f1f2', padding: 24, minHeight: 400 }}>
                             {currentTable ? (
                                 <>
+                                    {/* 表头异常提示和复制表头按钮 */}
+                                    {isHeaderAbnormal && (
+                                        <div style={{ marginBottom: 16, color: '#faad14', display: 'flex', alignItems: 'center' }}>
+                                            <ExclamationCircleOutlined style={{ marginRight: 8 }} />
+                                            检测到表头异常，建议复制第一页表头
+                                            <Button type="primary" size="small" style={{ marginLeft: 16 }} onClick={() => { setShowCopyHeaderModal(true); setCopyHeaderFromPage(1); }}>复制表头</Button>
+                                        </div>
+                                    )}
+                                    {/* 复制表头弹窗 */}
+                                    <Modal
+                                        title="复制表头"
+                                        open={showCopyHeaderModal}
+                                        onOk={handleCopyHeader}
+                                        onCancel={() => setShowCopyHeaderModal(false)}
+                                        okText="复制"
+                                        cancelText="取消"
+                                        confirmLoading={copyHeaderLoading}
+                                    >
+                                        <div style={{ marginBottom: 12 }}>请选择要复制的表头来源页：</div>
+                                        <Radio.Group
+                                            value={copyHeaderFromPage}
+                                            onChange={e => setCopyHeaderFromPage(e.target.value)}
+                                        >
+                                            {tables.map((t, idx) => (
+                                                <Radio key={idx + 1} value={t.pageIndex || idx + 1} disabled={idx === selectedIndex}>
+                                                    第{t.pageIndex || idx + 1}页{idx === 0 ? '（第一页）' : ''}
+                                                </Radio>
+                                            ))}
+                                        </Radio.Group>
+                                    </Modal>
                                     <Space style={{ marginBottom: 16 }}>
                                         <Switch checked={showThumbnail} onChange={setShowThumbnail} />
                                         <span>显示缩略图</span>
@@ -777,6 +859,8 @@ function App() {
                                                 onMouseMove: handleHeaderMouseMove,
                                                 onMouseLeave: handleHeaderMouseLeave,
                                             })}
+                                            // 高亮异常表格
+                                            rowClassName={() => isHeaderAbnormal ? 'header-abnormal-row' : ''}
                                         />
                                     </div>
                                     <Modal

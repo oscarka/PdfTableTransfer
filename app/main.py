@@ -183,6 +183,69 @@ async def reprocess_page(data: dict = Body(...)):
         logging.error(f"/reprocess处理异常: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/copy_header")
+async def copy_header(data: dict = Body(...)):
+    """
+    复制某页表头到另一页表格。
+    参数：fileName, fromPageIndex, toPageIndex, restoreFirstRow
+    """
+    file_name = data.get("fileName")
+    from_page = data.get("fromPageIndex")
+    to_page = data.get("toPageIndex")
+    restore_first_row = data.get("restoreFirstRow", False)
+    if not file_name or not from_page or not to_page:
+        raise HTTPException(status_code=400, detail="缺少参数")
+    pdf_path = os.path.join(UPLOAD_DIR, file_name)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="文件未找到")
+    try:
+        doc = PyPDFium2Document(pdf_path)
+        # 提取来源页表头
+        from_tables = detector.extract(doc[from_page - 1])
+        if not from_tables:
+            raise HTTPException(status_code=404, detail="来源页未检测到表格")
+        from_ft = formatter.extract(from_tables[0])
+        from_df = from_ft.df()
+        header = list(from_df.columns)
+        # 提取目标页表格
+        to_tables = detector.extract(doc[to_page - 1])
+        if not to_tables:
+            raise HTTPException(status_code=404, detail="目标页未检测到表格")
+        to_ft = formatter.extract(to_tables[0])
+        to_df = to_ft.df()
+        # 记录当前表头内容（这个才是"原本被当作表头的那一行"）
+        original_header_content = list(to_df.columns) if len(to_df.columns) > 0 else None
+        print("[copy_header调试] 当前表头内容:", original_header_content)
+        # 用来源页表头替换目标页表格的列名
+        if len(header) == len(to_df.columns):
+            to_df.columns = header
+        else:
+            # 列数不一致时，补齐或截断
+            to_df.columns = header[:len(to_df.columns)] + [f"列{i+1}" for i in range(len(header), len(to_df.columns))]
+        # 如果需要恢复首行为数据
+        if restore_first_row and original_header_content is not None:
+            # 把原本的表头内容作为第一行数据插入
+            row = (original_header_content + [""] * len(to_df.columns))[:len(to_df.columns)]
+            print("[copy_header调试] 把原表头内容作为第一行插入:", row)
+            to_df = pd.concat([pd.DataFrame([row], columns=to_df.columns), to_df.reset_index(drop=True)], ignore_index=True)
+        # 返回修正后的表格数据
+        html_table = to_df.fillna("").to_html()
+        img = to_ft.image()
+        img_buffer = io.BytesIO()
+        img.save(img_buffer, format='PNG')
+        img_str = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+        doc.close()
+        return {
+            "html_table": html_table,
+            "image": f"data:image/png;base64,{img_str}",
+            "data": to_df.to_dict(orient='records'),
+            "pageIndex": to_page,
+            "fileName": file_name,
+            "columns": list(to_df.columns)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logging.warning(f"[middleware] 收到请求: {request.method} {request.url.path}")
