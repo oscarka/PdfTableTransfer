@@ -130,15 +130,29 @@ function App() {
             setEditingColValue('');
             return;
         }
-        setEditColumns((prev) => prev.map((c, i) => (i === colIdx ? newName : c)));
-        setEditData((prev) => prev.map(row => {
+        const newColumns = editColumns.map((c, i) => (i === colIdx ? newName : c));
+        const newData = editData.map(row => {
             const newRow = { ...row };
             newRow[newName] = newRow[oldName];
             delete newRow[oldName];
             return newRow;
-        }));
+        });
+        setEditColumns(newColumns);
+        setEditData(newData);
         setEditingColIdx(null);
         setEditingColValue('');
+        // 强行同步缓存，直接用最新变量
+        setEditedTables(prev => ({
+            ...prev,
+            [selectedIndex]: { data: newData, columns: newColumns }
+        }));
+        // 日志
+        console.log('[调试] handleSaveColName后 editedTables:', {
+            ...editedTables,
+            [selectedIndex]: { data: newData, columns: newColumns }
+        });
+        console.log('[调试] handleSaveColName后 editColumns:', newColumns);
+        console.log('[调试] handleSaveColName后 editData:', newData);
     };
     // 取消编辑
     const handleCancelColName = () => {
@@ -636,22 +650,66 @@ function App() {
         if (!currentTable || !currentTable.fileName || !currentTable.pageIndex) return;
         setCopyHeaderLoading(true);
         try {
+            // 获取当前最新的表头（用户修改后的）
+            const sourceTable = tables[copyHeaderFromPage - 1];
+            console.log("[前端调试] copyHeaderFromPage:", copyHeaderFromPage);
+            console.log("[前端调试] sourceTable:", sourceTable);
+            console.log("[前端调试] tables数组:", tables);
+            console.log("[前端调试] editedTables:", editedTables);
+            console.log("[前端调试] editedTables[copyHeaderFromPage - 1]:", editedTables[copyHeaderFromPage - 1]);
+
+            // 检查是否有编辑过的表头
+            const editedSourceTable = editedTables[copyHeaderFromPage - 1];
+            console.log("[前端调试] editedSourceTable:", editedSourceTable);
+
+            // 优先使用编辑过的表头，否则使用原始表头
+            let currentHeader;
+            if (editedSourceTable && editedSourceTable.columns && editedSourceTable.columns.length > 0) {
+                currentHeader = editedSourceTable.columns;
+                console.log("[前端调试] 使用编辑过的表头:", currentHeader);
+            } else if (sourceTable && sourceTable.data && sourceTable.data.length > 0) {
+                currentHeader = Object.keys(sourceTable.data[0]);
+                console.log("[前端调试] 使用原始表头:", currentHeader);
+            } else {
+                message.error('无法获取表头数据');
+                return;
+            }
+
+            // 关键日志：即将传递 customHeader
+            console.log("[前端调试] handleCopyHeader 即将POST customHeader:", currentHeader);
             const res = await axios.post('/copy_header', {
                 fileName: currentTable.fileName,
                 fromPageIndex: copyHeaderFromPage,
                 toPageIndex: currentTable.pageIndex,
-                restoreFirstRow: true
+                restoreFirstRow: true,
+                customHeader: currentHeader  // 传递最新的表头
             });
+
             // 用新数据刷新当前表格
-            setEditedTables(prev => ({
-                ...prev,
-                [selectedIndex]: { data: res.data.data, columns: res.data.columns }
-            }));
+            const newData = { data: res.data.data, columns: res.data.columns };
+            console.log('[前端调试] 收到后端返回数据:', newData);
+
+            setEditedTables(prev => {
+                const updated = {
+                    ...prev,
+                    [selectedIndex]: newData
+                };
+                console.log('[前端调试] setEditedTables后 updated:', updated);
+                return updated;
+            });
+
             setEditData(res.data.data);
             setEditColumns(res.data.columns);
+
             message.success('表头复制成功！');
             setShowCopyHeaderModal(false);
+
+            // 关键日志：复制表头后的状态
+            console.log('[前端调试] handleCopyHeader 结束后 editedTables:', editedTables);
+            console.log('[前端调试] handleCopyHeader 结束后 editColumns:', res.data.columns);
+            console.log('[前端调试] handleCopyHeader 结束后 editData:', res.data.data);
         } catch (e) {
+            console.error('[前端调试] handleCopyHeader 出错:', e);
             message.error('复制表头失败');
         } finally {
             setCopyHeaderLoading(false);

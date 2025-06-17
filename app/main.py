@@ -193,6 +193,14 @@ async def copy_header(data: dict = Body(...)):
     from_page = data.get("fromPageIndex")
     to_page = data.get("toPageIndex")
     restore_first_row = data.get("restoreFirstRow", False)
+    custom_header = data.get("customHeader")  # 新增：前端传递的最新表头
+    print("[copy_header调试] 接收到的参数:", {
+        "fileName": file_name,
+        "fromPageIndex": from_page,
+        "toPageIndex": to_page,
+        "restoreFirstRow": restore_first_row,
+        "customHeader": custom_header
+    })
     if not file_name or not from_page or not to_page:
         raise HTTPException(status_code=400, detail="缺少参数")
     pdf_path = os.path.join(UPLOAD_DIR, file_name)
@@ -200,13 +208,20 @@ async def copy_header(data: dict = Body(...)):
         raise HTTPException(status_code=404, detail="文件未找到")
     try:
         doc = PyPDFium2Document(pdf_path)
-        # 提取来源页表头
-        from_tables = detector.extract(doc[from_page - 1])
-        if not from_tables:
-            raise HTTPException(status_code=404, detail="来源页未检测到表格")
-        from_ft = formatter.extract(from_tables[0])
-        from_df = from_ft.df()
-        header = list(from_df.columns)
+        # 如果前端传递了自定义表头，直接使用；否则从PDF提取
+        if custom_header:
+            header = custom_header
+            print("[copy_header调试] 使用前端传递的表头:", header)
+        else:
+            # 提取来源页表头
+            from_tables = detector.extract(doc[from_page - 1])
+            if not from_tables:
+                raise HTTPException(status_code=404, detail="来源页未检测到表格")
+            from_ft = formatter.extract(from_tables[0])
+            from_df = from_ft.df()
+            header = list(from_df.columns)
+            print("[copy_header调试] 从PDF提取的表头:", header)
+        print("[copy_header调试] 最终使用的表头:", header)
         # 提取目标页表格
         to_tables = detector.extract(doc[to_page - 1])
         if not to_tables:
